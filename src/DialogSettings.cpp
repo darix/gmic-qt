@@ -81,9 +81,12 @@ DialogSettings::DialogSettings(QWidget * parent) : QDialog(parent), ui(new Ui::D
 
   ui->rbLeftPreview->setChecked(Settings::previewPosition() == MainWindow::PreviewPosition::Left);
   ui->rbRightPreview->setChecked(Settings::previewPosition() == MainWindow::PreviewPosition::Right);
-  const bool savedDarkTheme = QSettings().value(DARK_THEME_KEY, GmicQtHost::DarkThemeIsDefault).toBool();
+  const bool savedDarkTheme = GMIC_SETTINGS_INLINE.value(DARK_THEME_KEY, GmicQtHost::DarkThemeIsDefault).toBool();
   ui->rbDarkTheme->setChecked(savedDarkTheme);
   ui->rbDefaultTheme->setChecked(!savedDarkTheme);
+#ifdef _GMIC_QT_DISABLE_THEMING_
+  ui->groupBoxTheme->setEnabled(false);
+#endif
   ui->cbNativeColorDialogs->setChecked(Settings::nativeColorDialogs());
   ui->cbNativeColorDialogs->setToolTip(tr("Check to use Native/OS color dialog, uncheck to use Qt's"));
   ui->cbShowLogos->setChecked(Settings::visibleLogos());
@@ -93,22 +96,41 @@ DialogSettings::DialogSettings(QWidget * parent) : QDialog(parent), ui(new Ui::D
 
   connect(ui->pbOk, &QPushButton::clicked, this, &DialogSettings::onOk);
   connect(ui->rbLeftPreview, &QRadioButton::toggled, this, &DialogSettings::onRadioLeftPreviewToggled);
+#ifdef _GMIC_QT_DISABLE_UPDATES_
+  ui->pbUpdate->setEnabled(false);
+  ui->cbUpdatePeriodicity->setEnabled(false);
+#else
   connect(ui->pbUpdate, &QPushButton::clicked, this, &DialogSettings::onUpdateClicked);
   connect(ui->cbUpdatePeriodicity, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &DialogSettings::onUpdatePeriodicityChanged);
+#endif
   connect(ui->labelPreviewLeft, &ClickableLabel::clicked, ui->rbLeftPreview, &QRadioButton::click);
   connect(ui->labelPreviewRight, &ClickableLabel::clicked, ui->rbRightPreview, &QRadioButton::click);
   connect(ui->cbNativeColorDialogs, &QCheckBox::toggled, this, &DialogSettings::onColorDialogsToggled);
   connect(Updater::getInstance(), &Updater::updateIsDone, this, &DialogSettings::enableUpdateButton);
+#ifndef _GMIC_QT_DISABLE_THEMING_
   connect(ui->rbDarkTheme, &QRadioButton::toggled, this, &DialogSettings::onDarkThemeToggled);
+#endif
   connect(ui->cbShowLogos, &QCheckBox::toggled, this, &DialogSettings::onVisibleLogosToggled);
   connect(ui->cbPreviewZoom, &QCheckBox::toggled, this, &DialogSettings::onPreviewZoomToggled);
   connect(ui->sbPreviewTimeout, QOverload<int>::of(&QSpinBox::valueChanged), this, &DialogSettings::onPreviewTimeoutChange);
   connect(ui->outputMessages, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &DialogSettings::onOutputMessageModeChanged);
+#ifdef _GMIC_QT_DISABLE_UPDATES_
+  ui->cbNotifyFailedUpdate->setEnabled(false);
+#else
   connect(ui->cbNotifyFailedUpdate, &QCheckBox::toggled, this, &DialogSettings::onNotifyStartupUpdateFailedToggle);
+#endif
 
+#ifdef _GMIC_QT_DISABLE_TRANSLATION_
+  {
+    // Pierce the veil and disable the combobox of the language selector
+    auto *combobox = ui->languageSelector->findChild<QComboBox*>("comboBox");
+    if (combobox) combobox->setEnabled(false);
+  }
+#endif
   ui->languageSelector->selectLanguage(Settings::languageCode());
   ui->languageSelector->enableFilterTranslation(Settings::filterTranslationEnabled());
 
+#ifndef _GMIC_QT_DISABLE_THEMING_
   if (Settings::darkThemeEnabled()) {
     QPalette p = ui->cbNativeColorDialogs->palette();
     p.setColor(QPalette::Text, Settings::CheckBoxTextColor);
@@ -123,6 +145,7 @@ DialogSettings::DialogSettings(QWidget * parent) : QDialog(parent), ui(new Ui::D
     ui->cbShowLogos->setPalette(p);
     ui->cbNotifyFailedUpdate->setPalette(p);
   }
+#endif
   ui->pbOk->setFocus();
   ui->tabWidget->setCurrentIndex(0);
 }
@@ -139,7 +162,7 @@ void DialogSettings::onOk()
 
 void DialogSettings::done(int r)
 {
-  QSettings settings;
+  GMIC_SETTINGS(settings);
   Settings::save(settings);
   QDialog::done(r);
 }

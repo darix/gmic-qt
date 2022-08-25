@@ -190,8 +190,12 @@ MainWindow::MainWindow(QWidget * parent) : QMainWindow(parent), ui(new Ui::MainW
     updateShortcutF5->setContext(Qt::ApplicationShortcut);
     QShortcut * updateShortcutCtrlR = new QShortcut(QKeySequence("Ctrl+R"), this);
     updateShortcutCtrlR->setContext(Qt::ApplicationShortcut);
+#ifdef _GMIC_QT_DISABLE_UPDATES_
+    ui->tbUpdateFilters->setEnabled(false);
+#else
     connect(updateShortcutF5, &QShortcut::activated, [this]() { ui->tbUpdateFilters->animateClick(); });
     connect(updateShortcutCtrlR, &QShortcut::activated, [this]() { ui->tbUpdateFilters->animateClick(); });
+#endif
     ui->tbUpdateFilters->setToolTip(updateText);
   }
 
@@ -279,6 +283,7 @@ void MainWindow::setIcons()
   ui->tbExpandCollapse->setIcon(_expandIcon);
 }
 
+#ifndef _GMIC_QT_DISABLE_THEMING_
 void MainWindow::setDarkTheme()
 {
   // SHOW(QStyleFactory::keys());
@@ -331,6 +336,7 @@ void MainWindow::setDarkTheme()
   ui->vSplitterLine->setStyleSheet("QFrame{ border-top: 0px none #a0a0a0; border-bottom: 1px solid rgb(160,160,160);}");
   Settings::UnselectedFilterTextColor = Settings::UnselectedFilterTextColor.darker(150);
 }
+#endif
 
 void MainWindow::setPluginParameters(const RunParameters & parameters)
 {
@@ -385,7 +391,7 @@ void MainWindow::buildFiltersTree()
     _filtersPresenter->importGmicGTKFaves();
     _filtersPresenter->saveFaves();
     _gtkFavesShouldBeImported = false;
-    QSettings().setValue(FAVES_IMPORT_KEY, true);
+    GMIC_SETTINGS_INLINE.setValue(FAVES_IMPORT_KEY, true);
   }
 
   _filtersPresenter->toggleSelectionMode(withVisibility);
@@ -495,7 +501,7 @@ void MainWindow::onStartupFiltersUpdateFinished(int status)
   } else if (status == (int)Updater::UpdateStatus::NotNecessary) {
   }
 
-  if (QSettings().value(FAVES_IMPORT_KEY, false).toBool() || !FavesModelReader::gmicGTKFaveFileAvailable()) {
+  if (GMIC_SETTINGS_INLINE.value(FAVES_IMPORT_KEY, false).toBool() || !FavesModelReader::gmicGTKFaveFileAvailable()) {
     _gtkFavesShouldBeImported = false;
   } else {
     _gtkFavesShouldBeImported = askUserForGTKFavesImport();
@@ -512,7 +518,7 @@ void MainWindow::onStartupFiltersUpdateFinished(int status)
   }
 
   // Retrieve and select previously selected filter
-  QString hash = QSettings().value("SelectedFilter", QString()).toString();
+  QString hash = GMIC_SETTINGS_INLINE.value("SelectedFilter", QString()).toString();
   if (_newSession || !_lastExecutionOK) {
     hash.clear();
   }
@@ -577,7 +583,9 @@ void MainWindow::onEscapeKeyPressed()
     } else {
       _processor.cancel();
       ui->previewWidget->displayOriginalImage();
+#ifndef _GMIC_QT_DISABLE_UPDATES_
       ui->tbUpdateFilters->setEnabled(true);
+#endif
     }
   }
 }
@@ -677,7 +685,9 @@ void MainWindow::onPreviewUpdateRequested(bool synchronous)
     ui->previewWidget->displayOriginalImage();
     return;
   }
+#ifndef _GMIC_QT_DISABLE_UPDATES_
   ui->tbUpdateFilters->setEnabled(false);
+#endif
 
   const FiltersPresenter::Filter currentFilter = _filtersPresenter->currentFilter();
   GmicProcessor::FilterContext context;
@@ -740,7 +750,9 @@ void MainWindow::onPreviewImageAvailable()
   }
   ui->previewWidget->setPreviewImage(_processor.previewImage());
   ui->previewWidget->enableRightClick();
+#ifndef _GMIC_QT_DISABLE_UPDATES_
   ui->tbUpdateFilters->setEnabled(true);
+#endif
   if (_pendingActionAfterCurrentProcessing == ProcessingAction::Close) {
     close();
   }
@@ -748,9 +760,19 @@ void MainWindow::onPreviewImageAvailable()
 
 void MainWindow::onPreviewError(const QString & message)
 {
+  // if Kirta is too busy generating the images, restart the
+  // the preview process
+  if (_processor.isInputImagesEmpty()) {
+      CroppedImageListProxy::clear();
+      QTimer::singleShot(1000, ui->previewWidget, SLOT(sendUpdateRequest()));
+      return;
+  }
+
   ui->previewWidget->setPreviewErrorMessage(message);
   ui->previewWidget->enableRightClick();
+#ifndef _GMIC_QT_DISABLE_UPDATES_
   ui->tbUpdateFilters->setEnabled(true);
+#endif
   if (_pendingActionAfterCurrentProcessing == ProcessingAction::Close) {
     close();
   }
@@ -831,12 +853,16 @@ void MainWindow::onVeryFirstShowEvent()
   Updater::setOutputMessageMode(Settings::outputMessageMode());
   int ageLimit;
   {
-    QSettings settings;
+    GMIC_SETTINGS(settings);
     ageLimit = settings.value(INTERNET_UPDATE_PERIODICITY_KEY, INTERNET_DEFAULT_PERIODICITY).toInt();
   }
+#ifndef _GMIC_QT_DISABLE_UPDATES_
   const bool useNetwork = (ageLimit != INTERNET_NEVER_UPDATE_PERIODICITY);
+#else
+  const bool useNetwork = false;
+#endif
   ui->progressInfoWidget->startFiltersUpdateAnimationAndShow();
-  Updater::getInstance()->startUpdate(ageLimit, 4, useNetwork);
+  Updater::getInstance()->startUpdate(ageLimit, 60, useNetwork);
 }
 
 void MainWindow::setZoomConstraint()
@@ -997,7 +1023,7 @@ void MainWindow::saveCurrentParameters()
 
 void MainWindow::saveSettings()
 {
-  QSettings settings;
+  GMIC_SETTINGS(settings);
 
   _filtersPresenter->saveSettings(settings);
 
@@ -1039,7 +1065,7 @@ void MainWindow::saveSettings()
 
 void MainWindow::loadSettings()
 {
-  QSettings settings;
+  GMIC_SETTINGS(settings);
   _filtersPresenter->loadSettings(settings);
 
   _lastExecutionOK = settings.value("LastExecution/ExitedNormally", true).toBool();
@@ -1055,9 +1081,11 @@ void MainWindow::loadSettings()
   if (settings.value("Config/PreviewPosition", "Left").toString() == "Left") {
     setPreviewPosition(PreviewPosition::Left);
   }
+#ifndef _GMIC_QT_DISABLE_THEMING_
   if (Settings::darkThemeEnabled()) {
     setDarkTheme();
   }
+#endif
   if (!Settings::visibleLogos()) {
     ui->logosLabel->hide();
   }
@@ -1101,7 +1129,7 @@ void MainWindow::loadSettings()
     ui->splitter->setSizes(sizes);
   }
 
-  ui->cbInternetUpdate->setChecked(settings.value("Config/RefreshInternetUpdate", true).toBool());
+  ui->cbInternetUpdate->setChecked(settings.value(REFRESH_USING_INTERNET_KEY, INTERNET_DEFAULT_REFRESH_UPDATE).toBool());
 }
 
 void MainWindow::setPreviewPosition(MainWindow::PreviewPosition position)
@@ -1163,7 +1191,7 @@ void MainWindow::setPreviewPosition(MainWindow::PreviewPosition position)
 void MainWindow::adjustVerticalSplitter()
 {
   QList<int> sizes;
-  QSettings settings;
+  GMIC_SETTINGS(settings);
   sizes.push_back(settings.value(QString("Config/ParamsVerticalSplitterSizeTop"), -1).toInt());
   sizes.push_back(settings.value(QString("Config/ParamsVerticalSplitterSizeBottom"), -1).toInt());
   const int splitterHeight = ui->verticalSplitter->height();
@@ -1292,17 +1320,19 @@ bool MainWindow::askUserForGTKFavesImport()
                          QMessageBox::Yes | QMessageBox::No, this);
   messageBox.setDefaultButton(QMessageBox::Yes);
   QCheckBox * cb = new QCheckBox(tr("Don't ask again"));
+#ifndef _GMIC_QT_DISABLE_THEMING_
   if (Settings::darkThemeEnabled()) {
     QPalette p = cb->palette();
     p.setColor(QPalette::Text, Settings::CheckBoxTextColor);
     p.setColor(QPalette::Base, Settings::CheckBoxBaseColor);
     cb->setPalette(p);
   }
+#endif
   messageBox.setCheckBox(cb);
   int choice = messageBox.exec();
   if (choice != QMessageBox::Yes) {
     if (cb->isChecked()) {
-      QSettings().setValue(FAVES_IMPORT_KEY, true);
+      GMIC_SETTINGS_INLINE.setValue(FAVES_IMPORT_KEY, true);
     }
     return false;
   }

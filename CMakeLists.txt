@@ -22,7 +22,7 @@ endif()
 
 message("Build type is " ${CMAKE_BUILD_TYPE})
 
-set (GMIC_QT_HOST "gimp" CACHE STRING "Define for which host gmic-qt will be built: gimp, gimp3 (experimental), krita, none, paintdotnet or 8bf.")
+set (GMIC_QT_HOST "gimp" CACHE STRING "Define for which host qmic-qt will be built: gimp, gimp3 (experimental), krita, krita-plugin, none, paintdotnet or 8bf.")
 if (${GMIC_QT_HOST} STREQUAL "none")
   message("Building standalone version.")
 else()
@@ -576,10 +576,57 @@ else(ENABLE_DYNAMIC_LINKING)
     )
 endif(ENABLE_DYNAMIC_LINKING)
 
-message("Producing translation .qm files")
-execute_process(COMMAND make WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/translations OUTPUT_QUIET)
-message("Producing filter translation .qm files")
-execute_process(COMMAND make WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/translations/filters OUTPUT_QUIET)
+if (UNIX OR APPLE OR MSYS)
+  message("Producing translation .qm files")
+  execute_process(COMMAND make WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/translations OUTPUT_QUIET)
+  message("Producing filter translation .qm files")
+  execute_process(COMMAND make WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/translations/filters OUTPUT_QUIET)
+else()
+  set(gmic_translation_files
+      translations/cs.ts
+      translations/de.ts
+      translations/es.ts
+      translations/fr.ts
+      translations/id.ts
+      translations/it.ts
+      translations/ja.ts
+      translations/nl.ts
+      translations/pl.ts
+      translations/pt.ts
+      translations/ru.ts
+      translations/sv.ts
+      translations/uk.ts
+      translations/zh.ts
+      translations/zh_tw.ts
+  )
+
+  set_source_files_properties(${gmic_translation_files} PROPERTIES OUTPUT_LOCATION ${CMAKE_CURRENT_SOURCE_DIR}/translations)
+
+  set(gmic_filters_translation_files
+      translations/filters/de.ts
+      translations/filters/es.ts
+      translations/filters/fr.ts
+      translations/filters/it.ts
+      translations/filters/ja.ts
+      translations/filters/nl.ts
+      translations/filters/pl.ts
+      translations/filters/pt.ts
+      translations/filters/ru.ts
+      translations/filters/zh.ts
+  )
+
+  set_source_files_properties(${gmic_filters_translation_files} PROPERTIES OUTPUT_LOCATION ${CMAKE_CURRENT_SOURCE_DIR}/translations/filters)
+
+  qt5_add_translation(gmic_qt_QM
+      ${gmic_translation_files}
+      ${gmic_filters_translation_files}
+  )
+endif()
+
+include(GNUInstallDirs)
+
+install(FILES ${CMAKE_SOURCE_DIR}/../resources/gmic_cluts.gmz DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/gmic)
+install(FILES ${CMAKE_SOURCE_DIR}/../resources/gmic_denoise_cnn.gmz DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/gmic)
 
 set(gmic_qt_QRC
     gmic_qt.qrc
@@ -602,7 +649,7 @@ if (${GMIC_QT_HOST} STREQUAL "gimp" OR ${GMIC_QT_HOST} STREQUAL "gimp3")
     set (gmic_qt_SRCS ${gmic_qt_SRCS} src/Host/Gimp/host_gimp.cpp)
     qt5_wrap_ui(gmic_qt_SRCS ${gmic_qt_FORMS})
     add_definitions(-DGMIC_HOST=gimp -DGIMP_DISABLE_DEPRECATED)
-    add_executable(gmic_gimp_qt ${gmic_qt_SRCS} ${gmic_qt_QRC})
+    add_executable(gmic_gimp_qt ${gmic_qt_SRCS} ${gmic_qt_QRC} ${gmic_qt_QM})
     target_link_libraries(
       gmic_gimp_qt
       PRIVATE
@@ -616,13 +663,78 @@ elseif (${GMIC_QT_HOST} STREQUAL "krita")
     set (gmic_qt_SRCS ${gmic_qt_SRCS} src/Host/Krita/host_krita.cpp)
     qt5_wrap_ui(gmic_qt_SRCS ${gmic_qt_FORMS})
     add_definitions(-DGMIC_HOST=krita)
-    add_executable(gmic_krita_qt ${gmic_qt_SRCS} ${gmic_qt_QRC})
+    add_executable(gmic_krita_qt ${gmic_qt_SRCS} ${gmic_qt_QRC} ${gmic_qt_QM})
     target_link_libraries(
       gmic_krita_qt
       PRIVATE
       ${gmic_qt_LIBRARIES}
       )
     install(TARGETS gmic_krita_qt RUNTIME DESTINATION bin)
+    install(FILES gmic_krita_qt.desktop DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/applications OPTIONAL)
+
+elseif (${GMIC_QT_HOST} STREQUAL "krita-plugin")
+    set(MIN_FRAMEWORKS_VERSION 5.44.0)
+
+    find_package(ECM 5.22 REQUIRED NOMODULE)
+    set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${ECM_MODULE_PATH} ${ECM_KDE_MODULE_DIR})
+
+    include(KDEInstallDirs)
+    include(KDECMakeSettings)
+
+    if (ANDROID)
+        set (KRITA_PLUGIN_INSTALL_DIR ${LIB_INSTALL_DIR})
+    else()
+        set (KRITA_PLUGIN_INSTALL_DIR ${LIB_INSTALL_DIR}/kritaplugins)
+    endif()
+
+    find_package(KF5 ${MIN_FRAMEWORKS_VERSION} REQUIRED COMPONENTS
+        CoreAddons
+    )
+
+    message(STATUS "Looking for Krita QMic libraries in: ${CMAKE_PREFIX_PATH}")
+
+    find_library(KIS_IMAGE_INTERFACE_LIBRARY
+      NAMES kritaqmicinterface
+      REQUIRED)
+
+    find_path(KIS_IMAGE_INTERFACE_DIR
+      NAMES kis_qmic_plugin_interface.h
+      REQUIRED)
+
+    set_package_properties(kritaqmicinterface PROPERTIES
+                           URL "http://www.krita.org"
+                           DESCRIPTION "Krita GMic core library"
+    )
+
+    set (gmic_qt_SRCS ${gmic_qt_SRCS} src/Host/KritaPlugin/host.cpp src/Host/KritaPlugin/gmicqttoolplugin.cpp)
+    set (gmic_qt_SRCS ${gmic_qt_SRCS} )
+    qt5_wrap_ui(gmic_qt_SRCS ${gmic_qt_FORMS})
+    add_definitions(-DGMIC_HOST=krita-plugin)
+    add_definitions(-D_GMIC_QT_DISABLE_THEMING_)
+    add_definitions(-D_GMIC_QT_CONSENT_TO_UPDATE_FIRST_)
+    add_definitions(-D_GMIC_QT_DISABLE_TRANSLATION_)
+    add_definitions(-D_GMIC_USE_HOSTED_SETTINGS_)
+    add_library(krita_gmic_qt MODULE ${gmic_qt_SRCS} ${gmic_qt_QRC} ${gmic_qt_QM})
+    target_include_directories(
+      krita_gmic_qt
+      PUBLIC
+      ${KIS_IMAGE_INTERFACE_DIR}
+    )
+    target_link_libraries(
+      krita_gmic_qt
+      PRIVATE
+      ${gmic_qt_LIBRARIES}
+      ${KIS_IMAGE_INTERFACE_LIBRARY}
+      KF5::CoreAddons
+      )
+    if (ANDROID)
+      target_link_libraries(
+        krita_gmic_qt
+        PRIVATE
+        log
+      )
+    endif()
+    install(TARGETS krita_gmic_qt DESTINATION ${KRITA_PLUGIN_INSTALL_DIR}) # plugin
 
 elseif (${GMIC_QT_HOST} STREQUAL "none")
 
@@ -638,7 +750,7 @@ elseif (${GMIC_QT_HOST} STREQUAL "none")
     )
   qt5_wrap_ui(gmic_qt_SRCS ${gmic_qt_FORMS})
   add_definitions(-DGMIC_HOST=standalone)
-  add_executable(gmic_qt ${gmic_qt_SRCS} ${gmic_qt_QRC})
+  add_executable(gmic_qt ${gmic_qt_SRCS} ${gmic_qt_QRC} ${gmic_qt_QM})
   target_link_libraries(gmic_qt PRIVATE ${gmic_qt_LIBRARIES})
   install(TARGETS gmic_qt RUNTIME DESTINATION bin)
 
@@ -647,7 +759,7 @@ elseif (${GMIC_QT_HOST} STREQUAL "paintdotnet")
   set (gmic_qt_SRCS ${gmic_qt_SRCS} src/Host/PaintDotNet/host_paintdotnet.cpp)
   qt5_wrap_ui(gmic_qt_SRCS ${gmic_qt_FORMS})
   add_definitions(-DGMIC_HOST=paintdotnet)
-  add_executable(gmic_paintdotnet_qt ${gmic_qt_SRCS} ${gmic_qt_QRC})
+  add_executable(gmic_paintdotnet_qt ${gmic_qt_SRCS} ${gmic_qt_QRC} ${gmic_qt_QM})
   target_link_libraries(
     gmic_paintdotnet_qt
     PRIVATE ${gmic_qt_LIBRARIES}
@@ -658,7 +770,7 @@ elseif (${GMIC_QT_HOST} STREQUAL "8bf")
     set (gmic_qt_SRCS ${gmic_qt_SRCS} src/Host/8bf/host_8bf.cpp)
     qt5_wrap_ui(gmic_qt_SRCS ${gmic_qt_FORMS})
     add_definitions(-DGMIC_HOST=plugin8bf)
-    add_executable(gmic_8bf_qt ${gmic_qt_SRCS} ${gmic_qt_QRC})
+    add_executable(gmic_8bf_qt ${gmic_qt_SRCS} ${gmic_qt_QRC} ${gmic_qt_QM})
     target_link_libraries(
       gmic_8bf_qt
       PRIVATE
@@ -666,7 +778,7 @@ elseif (${GMIC_QT_HOST} STREQUAL "8bf")
       )
 
 else()
-    message(FATAL_ERROR "GMIC_QT_HOST is not defined as gimp, gimp3, krita, none, paintdotnet or 8bf")
+    message(FATAL_ERROR "GMIC_QT_HOST is not defined as gimp, gimp3, krita, kritaplugin, none, paintdotnet or 8bf")
 endif()
 
 feature_summary(WHAT ALL FATAL_ON_MISSING_REQUIRED_PACKAGES)

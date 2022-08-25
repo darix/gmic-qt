@@ -66,7 +66,7 @@ QString Settings::NegativeSign('-');
 
 void Settings::load(UserInterfaceMode userInterfaceMode)
 {
-  QSettings settings;
+  GMIC_SETTINGS(settings);
   _visibleLogos = settings.value("LogosAreVisible", true).toBool();
   _darkThemeEnabled = settings.value(DARK_THEME_KEY, GmicQtHost::DarkThemeIsDefault).toBool();
   _languageCode = settings.value(LANGUAGE_CODE_KEY, QString()).toString();
@@ -107,7 +107,11 @@ void Settings::setVisibleLogos(bool on)
 
 bool Settings::darkThemeEnabled()
 {
+#ifdef _GMIC_QT_DISABLE_THEMING_
+  return GmicQtHost::DarkThemeIsDefault;
+#else
   return _darkThemeEnabled;
+#endif
 }
 
 void Settings::setDarkThemeEnabled(bool on)
@@ -210,7 +214,9 @@ void Settings::save(QSettings & settings)
   removeObsoleteKeys(settings);
   settings.setValue("LogosAreVisible", _visibleLogos);
   settings.setValue(DARK_THEME_KEY, _darkThemeEnabled);
+#ifndef _GMIC_QT_DISABLE_TRANSLATION_
   settings.setValue(LANGUAGE_CODE_KEY, _languageCode);
+#endif
   settings.setValue(ENABLE_FILTER_TRANSLATION, _filterTranslationEnabled);
   settings.setValue("Config/PreviewPosition", (_previewPosition == MainWindow::PreviewPosition::Left) ? "Left" : "Right");
 
