@@ -80,6 +80,7 @@ bool FloatParameter::addTo(QWidget * widget, int row)
     _slider->setPalette(p);
   }
 #endif
+
   _spinBox = new CustomDoubleSpinBox(widget, _min, _max);
   _spinBox->setSingleStep(double(_max - _min) / 100.0);
   _spinBox->setValue((double)_value);
