@@ -760,13 +760,15 @@ void MainWindow::onPreviewImageAvailable()
 
 void MainWindow::onPreviewError(const QString & message)
 {
-  // if Kirta is too busy generating the images, restart the
+#ifdef _GMIC_QT_DISABLE_THEMING_
+  // if Krita is too busy generating the images, restart the
   // the preview process
   if (_processor.isInputImagesEmpty()) {
       CroppedImageListProxy::clear();
       QTimer::singleShot(1000, ui->previewWidget, SLOT(sendUpdateRequest()));
       return;
   }
+#endif
 
   ui->previewWidget->setPreviewErrorMessage(message);
   ui->previewWidget->enableRightClick();
