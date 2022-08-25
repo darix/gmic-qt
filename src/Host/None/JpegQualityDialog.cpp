@@ -1,3 +1,4 @@
+#include "Globals.h"
 #include "JpegQualityDialog.h"
 #include <QSettings>
 #include "ui_jpegqualitydialog.h"
